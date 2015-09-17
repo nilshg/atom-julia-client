@@ -14,9 +14,11 @@ module.exports =
     client.handle 'info', ({msg}) =>
       @c.info msg
 
-    client.handle 'result', ({result, error}) =>
-      view = @ink.tree.fromJson(result)
+    client.handle 'result', ({result}) =>
+      view = if result.type then result.view else result
+      view = @ink.tree.fromJson view
       @ink.links.linkify view[0]
+      error = result.type == 'error'
       @ink.tree.toggle view unless error
       @c.result view,
         error: error
