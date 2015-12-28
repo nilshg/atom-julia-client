@@ -53,7 +53,7 @@ module.exports = JuliaClient =
 
     try
       if id = localStorage.getItem 'metrics.userId'
-        http.get "http://mikeinn.es/hit?id=#{id}&app=atom-julia"
+        http.get "http://data.junolab.org/hit?id=#{id}&app=atom-julia"
 
   deactivate: ->
     @subscriptions.dispose()
@@ -62,7 +62,7 @@ module.exports = JuliaClient =
     @spinner.dispose()
 
   commands: (subs) ->
-    subs.add atom.commands.add 'atom-text-editor',
+    subs.add atom.commands.add '.item-views > atom-text-editor',
       'julia-client:evaluate': (event) =>
         @withInk =>
           client.start()
@@ -83,7 +83,7 @@ module.exports = JuliaClient =
       'julia-client:toggle-console': => @withInk => cons.toggle()
       'julia-client:reset-loading-indicator': => client.reset()
 
-    subs.add atom.commands.add 'atom-text-editor[data-grammar="source julia"]:not([mini])',
+    subs.add atom.commands.add '.item-views > atom-text-editor[data-grammar="source julia"]',
       'julia-client:set-working-module': => modules.chooseModule()
       'julia-client:reset-working-module': => modules.resetModule()
 
