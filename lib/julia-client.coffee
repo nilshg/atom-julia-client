@@ -8,7 +8,6 @@ modules = require './modules'
 evaluation = require './eval'
 notifications = require './ui/notifications'
 utils = require './utils'
-completions = require './completions'
 frontend = require './frontend'
 cons = require './ui/console'
 
@@ -39,6 +38,10 @@ module.exports = JuliaClient =
       type: 'string'
       default: defaultTerminal
       description: 'Command used to open a terminal. (Windows/Linux only)'
+    spawnWrapper:
+      type: 'boolean'
+      default: true
+      description: 'Use a powershell wrapper to spawn Julia. Necessary to enable interrupts. Windows only, requires powershell version > 2.'
 
   activate: (state) ->
     @subscriptions = new CompositeDisposable
@@ -71,6 +74,14 @@ module.exports = JuliaClient =
         @withInk =>
           client.start()
           evaluation.evalAll()
+      'julia-client:toggle-documentation': =>
+        @withInk =>
+          client.start()
+          evaluation.toggleMeta 'docs'
+      'julia-client:toggle-methods': =>
+        @withInk =>
+          client.start()
+          evaluation.toggleMeta 'methods'
 
     subs.add atom.commands.add 'atom-workspace',
       'julia-client:open-a-repl': => terminal.repl()
@@ -114,4 +125,4 @@ module.exports = JuliaClient =
 
   consumeStatusBar: (bar) -> modules.consumeStatusBar(bar)
 
-  completions: -> completions
+  completions: -> require './completions'
