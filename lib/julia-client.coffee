@@ -8,37 +8,11 @@ modules = require './modules'
 evaluation = require './eval'
 notifications = require './ui/notifications'
 utils = require './utils'
-completions = require './completions'
 frontend = require './frontend'
 cons = require './ui/console'
 
-defaultTerminal =
-  switch process.platform
-    when 'darwin'
-      'Terminal.app'
-    when 'win32'
-      'cmd /C start cmd /C'
-    else
-      'x-terminal-emulator -e'
-
 module.exports = JuliaClient =
-  config:
-    juliaPath:
-      type: 'string'
-      default: 'julia'
-      description: 'The location of the Julia binary'
-    juliaArguments:
-      type: 'string'
-      default: '-q'
-      description: 'Command-line arguments to pass to Julia'
-    notifications:
-      type: 'boolean'
-      default: true
-      description: 'Enable notifications for evaluation'
-    terminal:
-      type: 'string'
-      default: defaultTerminal
-      description: 'Command used to open a terminal. (Windows/Linux only)'
+  config: require './config'
 
   activate: (state) ->
     @subscriptions = new CompositeDisposable
@@ -71,6 +45,14 @@ module.exports = JuliaClient =
         @withInk =>
           client.start()
           evaluation.evalAll()
+      'julia-client:toggle-documentation': =>
+        @withInk =>
+          client.start()
+          evaluation.toggleMeta 'docs'
+      'julia-client:toggle-methods': =>
+        @withInk =>
+          client.start()
+          evaluation.toggleMeta 'methods'
 
     subs.add atom.commands.add 'atom-workspace',
       'julia-client:open-a-repl': => terminal.repl()
@@ -114,4 +96,4 @@ module.exports = JuliaClient =
 
   consumeStatusBar: (bar) -> modules.consumeStatusBar(bar)
 
-  completions: -> completions
+  completions: -> require './completions'
