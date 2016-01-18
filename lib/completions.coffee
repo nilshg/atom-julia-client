@@ -6,15 +6,16 @@ module.exports =
   filterSuggestions: true
   excludeLowerPriority: false
 
+  client: client.import ['completions'], true
+
   completionsData: (ed, pos) ->
     module: ed.juliaModule
     cursor: run.cursor pos
     code: ed.getText()
     path: ed.getPath()
 
-  getCompletions: (ed, pos, f) ->
-    client.msg 'completions', @completionsData(ed, pos), (data) ->
-      f data
+  getCompletions: (ed, pos) ->
+    @client.completions @completionsData(ed, pos)
 
   toCompletion: (c) ->
     if c.constructor == String
@@ -25,5 +26,5 @@ module.exports =
   getSuggestions: ({editor, bufferPosition}) ->
     return [] unless client.isConnected()
     new Promise (resolve) =>
-      @getCompletions editor, bufferPosition, (completions) =>
+      @getCompletions(editor, bufferPosition).then (completions) =>
         resolve completions?.map(@toCompletion) or []

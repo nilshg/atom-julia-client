@@ -2,6 +2,7 @@
 
 client = require '../connection/client'
 notifications = require '../ui/notifications'
+views = require './views'
 
 module.exports =
   activate: ->
@@ -11,17 +12,13 @@ module.exports =
       "julia-client:clear-console": =>
         @c.reset()
 
-    client.handle 'info', ({msg}) =>
+    client.handle 'info', (msg) =>
       @c.info msg
 
-    client.handle 'result', ({result}) =>
-      view = if result.type then result.view else result
-      view = @ink.tree.fromJson view
-      @ink.links.linkify view[0]
-      error = result.type == 'error'
-      @ink.tree.toggle view unless error
-      @c.result view,
-        error: error
+    client.handle 'result', (result) =>
+      view = if result.type == 'error' then result.view else result
+      @c.result views.render(view),
+        error: result.type == 'error'
 
   deactivate: ->
     @cmd.dispose()
@@ -43,7 +40,7 @@ module.exports =
     if ed.getText()
       client.start()
       @c.done()
-      client.msg 'eval-repl', {code: ed.getText(), mode: ed.inkConsoleMode?.name}, (result) =>
+      client.rpc('evalrepl', code: ed.getText(), mode: ed.inkConsoleMode?.name).then (result) =>
         @c.input()
         notifications.show "Evaluation Finished"
 

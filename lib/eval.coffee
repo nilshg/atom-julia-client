@@ -1,7 +1,10 @@
 client = require './connection/client'
 notifications = require './ui/notifications'
+views = require './ui/views'
 
 module.exports =
+  client: client.import ['eval', 'evalall'], true
+
   cursor: ({row, column}) ->
     row: row+1
     column: column+1
@@ -22,16 +25,15 @@ module.exports =
   eval: ->
     editor = atom.workspace.getActiveTextEditor()
     for sel in editor.getSelections()
-      client.msg 'eval', @evalData(editor, sel), ({start, end, result, plainresult}) =>
-        view = if result.type then result.view else result
-        view = @ink.tree.fromJson(view)[0]
-        @ink.links.linkify view
+      @client.eval(@evalData(editor, sel)).then ({start, end, result, plainresult}) =>
+        error = result.type == 'error'
+        view = if error then result.view else result
         r = @ink?.results.showForLines editor, start-1, end-1,
-          content: view
-          error: result.type == 'error'
+          content: views.render view
           clas: 'julia'
+          error: error
           plainresult: plainresult
-        if result.type == 'error' and result.highlights
+        if error and result.highlights?
           @showError r, result.highlights
         notifications.show "Evaluation Finished"
 
@@ -41,7 +43,7 @@ module.exports =
     [word, range] = @getWord editor
     # if we only find numbers or nothing, return prematurely
     if word.length == 0 || !isNaN(word) then return
-    client.msg type, {code: word}, ({result}) =>
+    client.rpc(type, word).then ({result}) =>
       view = if result.type then result.view else result
       view = @ink.tree.fromJson(view)[0]
       @ink.links.linkify view
@@ -62,12 +64,11 @@ module.exports =
 
   evalAll: ->
     editor = atom.workspace.getActiveTextEditor()
-    client.msg 'eval-all', {
-                          path: editor.getPath()
-                          module: editor.juliaModule
-                          code: editor.getText()
-                         },
-      (result) =>
+    @client.evalall({
+                      path: editor.getPath()
+                      module: editor.juliaModule
+                      code: editor.getText()
+                    }).then (result) =>
         notifications.show "Evaluation Finished"
 
   showError: (r, lines) ->

@@ -9,37 +9,61 @@ module.exports =
   queue: []
   id: 0
 
-  input: ([type, data]) ->
+  unwrapPromise: (x, f) ->
+    if x.constructor is Promise
+      x.then (x) => @unwrapPromise x, f
+    else
+      f x
+
+  input: ([type, args...]) ->
+    if type.constructor == Object
+      {type, callback} = type
     if @handlers.hasOwnProperty type
-      if data.callback?
-        @handlers[type] data, (result) =>
-          @msg data.callback, result
-      else
-        @handlers[type] data
+      result = @handlers[type] args...
+      if callback
+        @unwrapPromise result, (result) =>
+          @msg callback, result
     else if @callbacks.hasOwnProperty type
       try
-        @callbacks[type] data
+        @callbacks[type] args[0]
       finally
         delete @callbacks[type]
         @loading.done()
     else
       console.log "julia-client: unrecognised message #{type}"
-      console.log data
+      console.log args
 
+  # Will be replaced by the connection logic
   output: (data) ->
 
-  msg: (type, data, f) ->
-    if f?
-      data.callback = @id = @id+1
-      @callbacks[@id] = f
-      @loading.working()
+  msg: (type, args...) ->
     if @isConnected()
-      @output [type, data]
+      @output [type, args...]
     else
-      @queue.push [type, data]
+      @queue.push [type, args...]
+
+  rpc: (type, args...) ->
+    new Promise (resolve) =>
+      @id = @id+1
+      @callbacks[@id] = resolve
+      @msg {type: type, callback: @id}, args...
+      @loading.working()
 
   handle: (type, f) ->
     @handlers[type] = f
+
+  import: (fs, rpc = false, mod = {}) ->
+    return unless fs?
+    if fs.rpc? or fs.msg?
+      mod = {}
+      @require fs.rpc, true, {}
+      @require fs.msg, false, {}
+    else
+      for f in fs
+        do (f) =>
+          mod[f] = (args...) =>
+            if rpc then @rpc f, args... else @msg f, args...
+    mod
 
   # Connecting & Booting
 

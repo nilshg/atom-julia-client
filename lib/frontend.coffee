@@ -3,6 +3,7 @@ selector = require './ui/selector'
 
 module.exports =
   activate: ->
-    client.handle 'select', ({items}, resolve) =>
-      selector.show items, (item) =>
-        resolve item: item
+    client.handle 'select', (items) ->
+      new Promise (resolve) ->
+        selector.show items, (item) =>
+          resolve item
