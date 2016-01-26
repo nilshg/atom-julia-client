@@ -1,5 +1,5 @@
-client = require './connection/client'
-run = require './eval'
+evaluation = require './evaluation'
+{client} =   require '../connection'
 
 module.exports =
   selector: '.source.julia'
@@ -10,7 +10,7 @@ module.exports =
 
   completionsData: (ed, pos) ->
     module: ed.juliaModule
-    cursor: run.cursor pos
+    cursor: evaluation.cursor pos
     code: ed.getText()
     path: ed.getPath()
 
@@ -25,6 +25,5 @@ module.exports =
 
   getSuggestions: ({editor, bufferPosition}) ->
     return [] unless client.isConnected()
-    new Promise (resolve) =>
-      @getCompletions(editor, bufferPosition).then (completions) =>
-        resolve completions?.map(@toCompletion) or []
+    @getCompletions(editor, bufferPosition).then (completions) =>
+      completions?.map(@toCompletion) or []

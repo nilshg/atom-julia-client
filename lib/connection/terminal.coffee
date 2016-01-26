@@ -1,5 +1,7 @@
 child_process = require 'child_process'
+
 client = require './client'
+proc = require './process'
 
 module.exports =
 
@@ -23,9 +25,13 @@ module.exports =
 
   terminal: -> atom.config.get("julia-client.terminal")
 
-  jlpath: -> atom.config.get("julia-client.juliaPath")
+  defaultTerminal: ->
+    if process.platform == 'win32'
+      'cmd /C start cmd /C'
+    else
+      'x-terminal-emulator -e'
 
-  repl: -> @term "#{@escpath @jlpath()} -q"
+  repl: -> @term "#{@escpath proc.jlpath()}"
 
   client: (port) ->
     client.booting()

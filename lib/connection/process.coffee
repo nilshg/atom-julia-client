@@ -1,28 +1,34 @@
 child_process = require 'child_process'
+net =           require 'net'
+path =          require 'path'
+fs =            require 'fs'
+
 client = require './client'
-net = require 'net'
-path = require 'path'
-fs = require 'fs'
 
 module.exports = jlprocess =
 
+  activate: ->
+    @cmds = atom.commands.add 'atom-workspace',
+      'julia-client:kill-julia': => @killJulia()
+      'julia-client:interrupt-julia': => @interruptJulia()
+
+  deactivate: ->
+    @cmds.dispose()
+
   bundledExe: ->
-    res = path.dirname(atom.config.resourcePath)
+    res = path.dirname atom.config.resourcePath
     exe = if process.platform is 'win32' then 'julia.exe' else 'julia'
-    p = path.join res, "julia/bin/#{exe}"
+    p = path.join res, 'julia', 'bin', exe
     if fs.existsSync p then p
 
   packageDir: (s...) ->
-    path.join __dirname, '..', '..', s...
+    packageRoot = path.resolve __dirname, '..', '..'
+    resourcePath = atom.config.resourcePath
+    if path.extname(resourcePath) is '.asar' and packageRoot.indexOf(resourcePath) is 0
+        packageRoot = path.join("#{resourcePath}.unpacked", 'node_modules', 'julia-client')
+    path.join packageRoot, s...
 
-  initialiseClient: (f) ->
-    atom.config.unset('julia-client.initialiseClient')
-    if (jlpath = @bundledExe())
-      proc = child_process.spawn jlpath, [@packageDir('jl', 'caches.jl')]
-      proc.on 'exit', ->
-        f()
-    else
-      f()
+  script: (s...) -> @packageDir 'script', s...
 
   workingDir: ->
     paths = atom.workspace.project.getDirectories()
@@ -31,7 +37,10 @@ module.exports = jlprocess =
     else
       process.env.HOME || process.env.USERPROFILE
 
-  jlpath: -> atom.config.get("julia-client.juliaPath")
+  jlpath: ->
+    p = atom.config.get("julia-client.juliaPath")
+    if p == '[bundle]' then p = @bundledExe()
+    p
 
   checkExe: (path, cb) ->
     if fs.existsSync(path)
@@ -52,9 +61,9 @@ module.exports = jlprocess =
       """
       dismissable: true
 
-  start: (port, cons, boot = true) ->
+  start: (port, cons) ->
     return if @proc?
-    boot && client.booting()
+    client.booting()
 
     @checkExe @jlpath(), (exists) =>
       if not exists
@@ -62,15 +71,11 @@ module.exports = jlprocess =
         client.cancelBoot()
         return
 
-      if atom.config.get 'julia-client.initialiseClient'
-        return @initialiseClient => @start port, cons, false
       @spawnJulia(port, cons)
-      @onStart()
       @proc.on 'exit', (code, signal) =>
         cons.c.err "Julia has stopped"
         if not @useWrapper then cons.c.err ": #{code}, #{signal}"
         cons.c.input() unless cons.c.isInput
-        @onStop()
         @proc = null
         client.cancelBoot()
       @proc.stdout.on 'data', (data) =>
@@ -80,36 +85,43 @@ module.exports = jlprocess =
         text = data.toString()
         if text then cons.c.err text
 
-  onStart: ->
-    @cmds = atom.commands.add 'atom-workspace',
-      'julia-client:kill-julia': => @killJulia()
-      'julia-client:interrupt-julia': => @interruptJulia()
-
-  onStop: ->
-    @cmds?.dispose()
-
   spawnJulia: (port, cons) ->
     if process.platform is 'win32' and atom.config.get("julia-client.enablePowershellWrapper")
       @useWrapper = parseInt(child_process.spawnSync("powershell", ["-NoProfile", "$PSVersionTable.PSVersion.Major"]).output[1].toString()) > 2
       if @useWrapper
-        @proc = child_process.spawn("powershell", ["-NoProfile", "-ExecutionPolicy", "bypass",
-                                    "& \"#{__dirname}\\spawnInterruptibleJulia.ps1\" -cwd #{@workingDir()} -port #{port} -jlpath \"#{@jlpath()}\" -boot \"#{@packageDir('jl', 'boot.jl')}\""])
+        @proc = child_process.spawn("powershell",
+                                    ["-NoProfile", "-ExecutionPolicy", "bypass",
+                                     "& \"#{@script "spawnInterruptible.ps1"}\"
+                                      -cwd #{@workingDir()} -port #{port}
+                                      -jlpath \"#{@jlpath()}\"
+                                      -boot \"#{@script 'boot.jl'}\""])
         return
       else
         cons.c.out "PowerShell version < 3 encountered. Running without wrapper (interrupts won't work)."
-    @proc = child_process.spawn(@jlpath(), [@packageDir("jl", "boot.jl"), port], cwd: @workingDir())
+    @proc = child_process.spawn(@jlpath(), [@script("boot.jl"), port], cwd: @workingDir())
+
+  # TODO: make 'kill' try to exit gracefully first
+
+  require: (f) ->
+    if not @proc
+      atom.notifications.addError "There's no Julia process running.",
+        detail: "Try starting one by evaluating something."
+    else
+      f()
 
   interruptJulia: ->
-    if @useWrapper
-      @sendSignalToWrapper('SIGINT')
-    else
-      @proc.kill('SIGINT')
+    @require =>
+      if @useWrapper
+        @sendSignalToWrapper('SIGINT')
+      else
+        @proc.kill('SIGINT')
 
   killJulia: ->
-    if @useWrapper
-      @sendSignalToWrapper('KILL')
-    else
-      @proc.kill()
+    @require =>
+      if @useWrapper
+        @sendSignalToWrapper('KILL')
+      else
+        @proc.kill()
 
   sendSignalToWrapper: (signal) ->
     wrapper = net.connect(port: 26992)

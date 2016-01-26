@@ -1,4 +1,5 @@
 net = require 'net'
+
 client = require './client'
 
 module.exports =
@@ -35,6 +36,6 @@ module.exports =
       c.on 'data', @buffer (s) =>
         client.input JSON.parse s
 
-    @server.listen 0, =>
+    @server.listen 0, 'localhost', =>
       @port = @server.address().port
       f?(@port)

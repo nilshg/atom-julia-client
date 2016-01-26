@@ -1,9 +1,13 @@
-client = require './connection/client'
-notifications = require './ui/notifications'
-views = require './ui/views'
+path = require 'path'
+
+{client} =  require '../connection'
+{notifications, views, selector} = require '../ui'
+{paths} = require '../misc'
 
 module.exports =
-  client: client.import ['eval', 'evalall'], true
+  client: client.import
+    rpc: ['eval', 'evalall']
+    msg: ['cd']
 
   cursor: ({row, column}) ->
     row: row+1
@@ -11,14 +15,14 @@ module.exports =
 
   evalData: (editor, selection) ->
     start = selection.getHeadBufferPosition()
-    end = selection.getTailBufferPosition()
-    if not start.isLessThan end then [start, end] = [end, start]
+    stop = selection.getTailBufferPosition()
+    if not start.isLessThan stop then [start, stop] = [stop, start]
 
     code: editor.getText()
     module: editor.juliaModule
     path: editor.getPath() || 'untitled-' + editor.getBuffer().inkId
     start: @cursor start
-    end: @cursor end
+    stop: @cursor stop
 
   # TODO: get block bounds as a seperate step
   # TODO: implement block finding in Atom
@@ -26,16 +30,18 @@ module.exports =
     editor = atom.workspace.getActiveTextEditor()
     for sel in editor.getSelections()
       @client.eval(@evalData(editor, sel)).then ({start, end, result, plainresult}) =>
-        error = result.type == 'error'
-        view = if error then result.view else result
-        r = @ink?.results.showForLines editor, start-1, end-1,
-          content: views.render view
-          clas: 'julia'
-          error: error
-          plainresult: plainresult
-        if error and result.highlights?
-          @showError r, result.highlights
-        notifications.show "Evaluation Finished"
+        if result?
+          error = result.type == 'error'
+          view = if error then result.view else result
+          fade = not @ink.Result.removeLines editor, start-1, end-1
+          r = new @ink.Result editor, [start-1, end-1],
+            content: views.render view
+            error: error
+            fade: fade
+          r.view.classList.add 'julia'
+          if error and result.highlights?
+            @showError r, result.highlights
+          notifications.show "Evaluation Finished"
 
   # get documentation or methods for the current word
   toggleMeta: (type) ->
@@ -47,7 +53,7 @@ module.exports =
       view = if result.type then result.view else result
       view = @ink.tree.fromJson(view)[0]
       @ink.links.linkify view
-      r = @ink?.results.toggleUnderline editor, range,
+      r = @ink.results.toggleUnderline editor, range,
         content: view
         clas: 'julia'
 
@@ -55,20 +61,21 @@ module.exports =
   getWord: (editor) ->
     cursor = editor.getLastCursor()
     # The following line is kinda iffy: The regex may or may not be well chosen
-    # and it duplicates the efforts from atom-language-julia. It might be
-    # better to select the current word via finding the smallest <span> containing
-    # the cursor which also has `function` or `macro` as its class.
+    # and it duplicates the efforts from atom-language-julia. It might be better
+    # to select the current word via finding the smallest <span> containing the
+    # cursor which also has `function` or `macro` as its class.
     range = cursor.getCurrentWordBufferRange({wordRegex: /[\u00A0-\uFFFF\w_!´]*\.?@?[\u00A0-\uFFFF\w_!´]+/})
     word = editor.getTextInBufferRange range
     [word, range]
 
   evalAll: ->
     editor = atom.workspace.getActiveTextEditor()
+    atom.commands.dispatch atom.views.getView(editor), 'inline-results:clear-all'
     @client.evalall({
                       path: editor.getPath()
                       module: editor.juliaModule
                       code: editor.getText()
-                    }).then (result) =>
+                    }).then (result) ->
         notifications.show "Evaluation Finished"
 
   showError: (r, lines) ->
@@ -81,3 +88,24 @@ module.exports =
       if @errorLines?.r == r
         @errorLines.lights.destroy()
       destroyResult()
+
+  # Working Directory
+
+  cdHere: ->
+    file = atom.workspace.getActiveTextEditor()?.getPath()
+    file? or atom.notifications.addError 'This file has no path.'
+    @client.cd path.dirname(file)
+
+  cdProject: ->
+    dirs = atom.project.getPaths()
+    if dirs.length < 1
+      atom.notifications.addError 'This project has no folders.'
+    else if dirs.length == 1
+      @client.cd dirs[0]
+    else
+      selector.show(dirs).then (dir) =>
+        return unless dir?
+        @client.cd dir
+
+  cdHome: ->
+    @client.cd paths.home()

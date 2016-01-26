@@ -9,9 +9,9 @@ module.exports =
   queue: []
   id: 0
 
-  unwrapPromise: (x, f) ->
-    if x.constructor is Promise
-      x.then (x) => @unwrapPromise x, f
+  unPromise: (x, f) ->
+    if x?.constructor is Promise
+      x.then f
     else
       f x
 
@@ -21,17 +21,23 @@ module.exports =
     if @handlers.hasOwnProperty type
       result = @handlers[type] args...
       if callback
-        @unwrapPromise result, (result) =>
-          @msg callback, result
-    else if @callbacks.hasOwnProperty type
-      try
-        @callbacks[type] args[0]
-      finally
-        delete @callbacks[type]
-        @loading.done()
+        @unPromise result, (result) =>
+          @msg 'cb', callback, result
     else
       console.log "julia-client: unrecognised message #{type}"
       console.log args
+
+  activate: ->
+    @handle 'cb', (id, result) =>
+      try
+        @callbacks[id].resolve result
+      finally
+        delete @callbacks[id]
+        @loading.done()
+
+    @handle 'cancelCallback', (id) =>
+      @callbacks[id].reject()
+      @loading.done()
 
   # Will be replaced by the connection logic
   output: (data) ->
@@ -43,9 +49,9 @@ module.exports =
       @queue.push [type, args...]
 
   rpc: (type, args...) ->
-    new Promise (resolve) =>
+    new Promise (resolve, reject) =>
       @id = @id+1
-      @callbacks[@id] = resolve
+      @callbacks[@id] = {resolve, reject}
       @msg {type: type, callback: @id}, args...
       @loading.working()
 
@@ -56,8 +62,8 @@ module.exports =
     return unless fs?
     if fs.rpc? or fs.msg?
       mod = {}
-      @require fs.rpc, true, {}
-      @require fs.msg, false, {}
+      @import fs.rpc, true,  mod
+      @import fs.msg, false, mod
     else
       for f in fs
         do (f) =>
@@ -73,6 +79,8 @@ module.exports =
   onDisconnected: (cb) -> @emitter.on('disconnected', cb)
 
   isConnected: -> false
+
+  isActive: -> @isConnected() || @isBooting
 
   connected: ->
     @emitter.emit 'connected'
@@ -99,12 +107,13 @@ module.exports =
     @cancelBoot()
     @loading.reset()
     @queue = []
+    cb.reject() for id, cb of @callbacks
     @callbacks = {}
 
   # Management & UI
 
   connectedError: ->
-    if @isConnected()
+    if @isActive()
       atom.notifications.addError "Can't create a new client.",
         detail: "There is already a Julia client running."
       true
@@ -112,7 +121,7 @@ module.exports =
       false
 
   notConnectedError: ->
-    if not @isConnected()
+    if not @isActive()
       atom.notifications.addError "Can't do that without a Julia client.",
         detail: "Try connecting a client by evaluating something."
       true
@@ -123,6 +132,6 @@ module.exports =
   disrequire: (f) -> @connectedError() or f()
 
   start: ->
-    if not @isConnected() and not @isBooting
+    if not @isActive()
       atom.commands.dispatch atom.views.getView(atom.workspace),
                              'julia-client:start-julia'

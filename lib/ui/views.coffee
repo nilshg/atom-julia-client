@@ -15,8 +15,10 @@ module.exports = views =
     view.innerHTML = content
     view
 
-  tree: ({head, children}) ->
-    @ink.tree.treeView(@render(head), children.map((x)=>@render @tags.div [x]))[0]
+  tree: ({head, children, expand}) ->
+    @ink.tree.treeView(@render(head),
+                       children.map((x)=>@render @tags.div [x]),
+                       expand: expand)
 
   subtree: ({label, child}) ->
     @render if child.type == "tree"
@@ -26,6 +28,14 @@ module.exports = views =
       # children: child.children.map((x) => @tags.span "gutted", x)
     else
       @tags.span "gutted", [label, child]
+
+  copy: ({view, text}) ->
+    view = @render view
+    atom.commands.add view,
+      'core:copy': (e) ->
+        atom.clipboard.write text
+        e.stopPropagation()
+    view
 
   link: ({file, line, contents}) ->
     view = @render @tags.a {href: '#'}, contents
@@ -41,6 +51,7 @@ module.exports = views =
     tree:    (a...) -> views.tree a...
     subtree: (a...) -> views.subtree a...
     link:    (a...) -> views.link a...
+    copy:    (a...) -> views.copy a...
 
   render: (data) ->
     if @views.hasOwnProperty(data.type)

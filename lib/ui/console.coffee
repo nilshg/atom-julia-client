@@ -1,8 +1,9 @@
-# TODO: modules, history
+# TODO: modules
 
-client = require '../connection/client'
-notifications = require '../ui/notifications'
-views = require './views'
+{client} =      require '../connection'
+{history} =     require '../misc'
+notifications = require './notifications'
+views =         require './views'
 
 module.exports =
   activate: ->
@@ -17,32 +18,44 @@ module.exports =
 
     client.handle 'result', (result) =>
       view = if result.type == 'error' then result.view else result
-      @c.result views.render(view),
+      view = views.render(view)
+      @c.result view,
         error: result.type == 'error'
+      if result.type isnt 'error'
+        views.ink.tree.toggle view
 
   deactivate: ->
     @cmd.dispose()
+    history.write @c.history
+    @c.destroy()
 
   create: ->
     @c = new @ink.Console
-    @c.setGrammar atom.grammars.grammarForScopeName('source.julia')
+    # Ugly, but the grammar doesn't seem to be loaded immediately.
+    setTimeout (=>
+      @c.setGrammar atom.grammars.grammarForScopeName('source.julia')
+      @c.input()
+    ), 10
     @c.view[0].classList.add 'julia'
     @c.view.getTitle = -> "Julia"
     @c.modes = => @replModes
     @c.onEval (ed) => @eval ed
-    @c.input()
-    @loading.onWorking => @c.view.loading true
-    @loading.onDone => @c.view.loading false
+    client.loading.onWorking => @c.view.loading true
+    client.loading.onDone => @c.view.loading false
+    history.read().then (entries) =>
+      @c.setHistory entries
 
   toggle: -> @c.toggle()
 
   eval: (ed) ->
-    if ed.getText()
+    if ed.getText().trim()
       client.start()
       @c.done()
-      client.rpc('evalrepl', code: ed.getText(), mode: ed.inkConsoleMode?.name).then (result) =>
-        @c.input()
-        notifications.show "Evaluation Finished"
+      client.rpc('evalrepl', code: ed.getText(), mode: ed.inkConsoleMode?.name)
+        .then (result) =>
+          @c.input()
+          notifications.show "Evaluation Finished"
+        .catch => @c.input()
 
   replModes:
     ';':
