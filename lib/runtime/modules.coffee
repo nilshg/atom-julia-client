@@ -1,6 +1,7 @@
-client = require './connection/client'
-selector = require './ui/selector'
 {CompositeDisposable} = require 'atom'
+
+{client} = require '../connection'
+{selector} = require '../ui'
 
 module.exports =
   activate: ->
@@ -46,7 +47,7 @@ module.exports =
 
   createStatusUI: ->
     @dom = document.createElement 'span'
-    @dom.classList.add 'julia-client'
+    @dom.classList.add 'julia-client', 'inline-block'
     @main = document.createElement 'a'
     @sub = document.createElement 'span'
     @divider = document.createElement 'span'
@@ -110,7 +111,7 @@ module.exports =
       row: row+1, column: column+1
       module: ed.juliaModule
 
-    client.msg 'module', data, ({main, sub, inactive, subInactive}) =>
+    client.rpc('module', data).then ({main, sub, inactive, subInactive}) =>
       @reset main, sub
       subInactive && @subInactive()
       inactive && @inactive()
@@ -118,10 +119,7 @@ module.exports =
   # TODO: auto detect option, remove reset command
   chooseModule: ->
     client.require =>
-      mods = new Promise (resolve) =>
-        client.msg 'all-modules', {}, (mods) =>
-          resolve mods
-      selector.show mods, (mod) =>
+      selector.show(client.rpc('allmodules')).then (mod) =>
         return unless mod?
         atom.workspace.getActiveTextEditor().juliaModule = mod
         @update()

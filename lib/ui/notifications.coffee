@@ -1,5 +1,4 @@
-remote = require('remote')
-client = require '../connection/client'
+remote = require 'remote'
 
 module.exports =
   notes: []
@@ -8,7 +7,6 @@ module.exports =
   activate: ->
     document.addEventListener 'focusin', =>
       @clear()
-    @msgHandlers()
 
   enabled: -> atom.config.get('julia-client.notifications')
 
@@ -25,7 +23,3 @@ module.exports =
     for note in @notes
       note.close()
     @notes = []
-
-  msgHandlers: ->
-    client.handle 'error', (options) =>
-      atom.notifications.addError options.msg, options
