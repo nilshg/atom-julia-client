@@ -1,3 +1,17 @@
+## 0.4.0
+* Better Console buffering
+* History prefix support, like the repl
+
+## 0.3.0
+* New Packages->Julia menu
+* Option to launch Julia on startup
+* Windows firewall no longer complains on first run
+* Shiny new Juno bundles
+* Console UI improvements
+* Improvments to copyability everywhere
+* Graphics support
+* REPL history integration
+
 ## 0.2.0
 * Improved scrolling for inline results
 * Inter-file links in errors and `methods` output
