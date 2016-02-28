@@ -31,8 +31,13 @@ module.exports =
   processCompletions: (completions, prefix) ->
     completions.map((c) => @toCompletion c, prefix)
 
+  validScope: ({scopes}) ->
+    for scope in scopes.slice 1
+      return false if scope.startsWith 'comment'
+    return true
+
   getSuggestions: (data) ->
-    return [] unless client.isConnected()
+    return [] unless client.isConnected() and @validScope data.scopeDescriptor
     @rawCompletions(data).then ({completions, prefix, mod}) =>
       return @fromCache mod, prefix if not completions?
       @processCompletions completions, prefix
@@ -48,3 +53,12 @@ module.exports =
   fromCache: (mod, prefix) ->
     @updateCache mod
     @processCompletions(@cache[mod] or [], prefix)
+
+  onDidInsertSuggestion: ({editor, suggestion: {type}}) ->
+    if type is 'function'
+      editor.mutateSelectedText (selection) ->
+        return unless selection.isEmpty()
+        {row, column} = selection.getBufferRange().start
+        if editor.getTextInBufferRange([[row, column], [row, column+1]]) isnt '('
+          selection.insertText '()'
+        selection.setBufferRange [[row, column+1], [row, column+1]]

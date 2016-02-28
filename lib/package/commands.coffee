@@ -14,6 +14,10 @@ module.exports =
         @withInk ->
           boot()
           juno.runtime.evaluation.eval()
+      'julia-client:evaluate-and-move': (event) =>
+        @withInk ->
+          boot()
+          juno.runtime.evaluation.eval(move: true)
       'julia-client:evaluate-all': (event) =>
         @withInk ->
           boot()
@@ -26,6 +30,13 @@ module.exports =
         @withInk ->
           boot()
           juno.runtime.evaluation.toggleMeta 'methods'
+      'julia-client:reset-workspace': =>
+        requireClient ->
+          editor = atom.workspace.getActiveTextEditor()
+          atom.commands.dispatch atom.views.getView(editor), 'inline-results:clear-all'
+          juno.connection.client.rpc('clear-workspace')
+      'julia:select-block': =>
+        juno.misc.blocks.select()
 
     @subs.add atom.commands.add '.item-views > atom-text-editor[data-grammar="source julia"],
                                  ink-console.julia',
@@ -37,6 +48,8 @@ module.exports =
         disrequireClient -> boot()
       'julia-client:open-console': => @withInk -> juno.runtime.console.open()
       "julia-client:clear-console": => juno.runtime.console.reset()
+      'julia-client:open-plot-pane': => @withInk -> juno.runtime.plots.open()
+      'julia-client:open-workspace': => @withInk -> juno.runtime.workspace.open()
       'julia-client:reset-loading-indicator': -> juno.connection.client.reset()
       'julia-client:settings': ->
         atom.workspace.open('atom://config/packages/julia-client')
