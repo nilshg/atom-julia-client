@@ -6,6 +6,8 @@ fs =            require 'fs'
 
 client = require './client'
 
+{exit} = client.import 'exit'
+
 module.exports = jlprocess =
 
   activate: ->
@@ -22,6 +24,8 @@ module.exports = jlprocess =
     exe = if process.platform is 'win32' then 'julia.exe' else 'julia'
     p = path.join res, 'julia', 'bin', exe
     if fs.existsSync p then p
+
+  isBundled: -> !!@bundledExe()
 
   packageDir: (s...) ->
     packageRoot = path.resolve __dirname, '..', '..'
@@ -110,7 +114,7 @@ module.exports = jlprocess =
         return
       else
         @emitter.emit 'stdout', "PowerShell version < 3 encountered. Running without wrapper (interrupts won't work)."
-    @proc = child_process.spawn(@jlpath(), [@script("boot.jl"), port], cwd: @workingDir())
+    @proc = child_process.spawn(@jlpath(), ["-i", @script("boot.jl"), port], cwd: @workingDir())
     fn()
 
   getFreePort: (fn) ->
@@ -123,8 +127,6 @@ module.exports = jlprocess =
   onStdout: (f) -> @emitter.on 'stdout', f
   onStderr: (f) -> @emitter.on 'stderr', f
 
-  # TODO: make 'kill' try to exit gracefully first
-
   require: (f) ->
     if not @proc
       atom.notifications.addError "There's no Julia process running.",
@@ -134,17 +136,21 @@ module.exports = jlprocess =
 
   interruptJulia: ->
     @require =>
-      if @useWrapper
-        @sendSignalToWrapper('SIGINT')
-      else
-        @proc.kill('SIGINT')
+      if client.isConnected() and client.isWorking()
+        if @useWrapper
+          @sendSignalToWrapper('SIGINT')
+        else
+          @proc.kill('SIGINT')
 
   killJulia: ->
-    @require =>
-      if @useWrapper
-        @sendSignalToWrapper('KILL')
-      else
-        @proc.kill()
+    if client.isConnected() and not client.isWorking()
+      exit()
+    else
+      @require =>
+        if @useWrapper
+          @sendSignalToWrapper('KILL')
+        else
+          @proc.kill()
 
   sendSignalToWrapper: (signal) ->
     wrapper = net.connect(port: @wrapPort)

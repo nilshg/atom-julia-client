@@ -9,11 +9,13 @@ modules = require './modules'
 
 module.exports =
 
-  eval: ->
+  # TODO: make the mark first and attach the result later
+  eval: ({move}={}) ->
     editor = atom.workspace.getActiveTextEditor()
-    mod = modules.current()
+    mod = modules.current() # TODO: may not work in all cases
     edpath = editor.getPath() || 'untitled-' + editor.getBuffer().inkId
-    for {range, line, text} in blocks.get editor
+    blocks.get(editor, move: true).forEach ({range, line, text, selection}) =>
+      blocks.moveNext editor, selection, range if move
       [[start], [end]] = range
       @ink.highlight editor, start, end
       evaluate({text, line: line+1, mod, path: edpath}).then (result) =>
