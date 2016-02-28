@@ -1,10 +1,10 @@
+{Emitter} =     require 'atom'
 child_process = require 'child_process'
 net =           require 'net'
 path =          require 'path'
 fs =            require 'fs'
 
 client = require './client'
-{console: cons} = require '../ui'
 
 module.exports = jlprocess =
 
@@ -12,6 +12,7 @@ module.exports = jlprocess =
     @cmds = atom.commands.add 'atom-workspace',
       'julia-client:kill-julia': => @killJulia()
       'julia-client:interrupt-julia': => @interruptJulia()
+    @emitter = new Emitter
 
   deactivate: ->
     @cmds.dispose()
@@ -74,42 +75,41 @@ module.exports = jlprocess =
         client.cancelBoot()
         return
 
-      @spawnJulia port, cons, =>
+      @spawnJulia port, =>
         @proc.on 'exit', (code, signal) =>
-          cons.c.err "Julia has stopped"
-          if not @useWrapper then cons.c.err ": #{code}, #{signal}"
-          cons.c.input() unless cons.c.isInput
+          @emitter.emit 'stderr', "Julia has stopped"
+          if not @useWrapper then @emitter.emit 'stderr', ": #{code}, #{signal}"
           @proc = null
           client.cancelBoot()
         @proc.stdout.on 'data', (data) =>
           text = data.toString()
-          if text then cons.c.out text
+          if text then @emitter.emit 'stdout', text
           if text and @pipeConsole then console.log text
         @proc.stderr.on 'data', (data) =>
           text = data.toString()
-          if text then cons.c.err text
+          if text then @emitter.emit 'stderr', text
           if text and @pipeConsole then console.info text
 
-  spawnJulia: (port, cons, fn) ->
+  spawnJulia: (port, fn) ->
     if process.platform is 'win32' and atom.config.get("julia-client.enablePowershellWrapper")
       @useWrapper = parseInt(child_process.spawnSync("powershell",
                                                     ["-NoProfile", "$PSVersionTable.PSVersion.Major"])
                                           .output[1].toString()) > 2
       if @useWrapper
-        # get a random port between 1000 and 20_000; this may not be free, of course,
-        # but hopefully not very often
+        # get a random and hopefully free port:
         @getFreePort =>
           @proc = child_process.spawn("powershell",
                                       ["-NoProfile", "-ExecutionPolicy", "bypass",
                                        "& \"#{@script "spawnInterruptible.ps1"}\"
-                                        -cwd \"#{@workingDir()}\"
-                                        -port #{port}
-                                        -wrapPort #{@wrapPort}
-                                        -jlpath \"#{@jlpath()}\"
-                                        -boot \"#{@script 'boot.jl'}\""])
+                                       -cwd \"#{@workingDir()}\"
+                                       -port #{port}
+                                       -wrapPort #{@wrapPort}
+                                       -jlpath \"#{@jlpath()}\"
+                                       -boot \"#{@script 'boot.jl'}\""])
           fn()
+        return
       else
-        cons.c.out "PowerShell version < 3 encountered. Running without wrapper (interrupts won't work)."
+        @emitter.emit 'stdout', "PowerShell version < 3 encountered. Running without wrapper (interrupts won't work)."
     @proc = child_process.spawn(@jlpath(), [@script("boot.jl"), port], cwd: @workingDir())
     fn()
 
@@ -119,6 +119,9 @@ module.exports = jlprocess =
       @wrapPort = server.address().port
       server.close()
       fn()
+
+  onStdout: (f) -> @emitter.on 'stdout', f
+  onStderr: (f) -> @emitter.on 'stderr', f
 
   # TODO: make 'kill' try to exit gracefully first
 

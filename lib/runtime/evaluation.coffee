@@ -2,51 +2,34 @@ path = require 'path'
 
 {client} =  require '../connection'
 {notifications, views, selector} = require '../ui'
-{paths} = require '../misc'
+{paths, blocks} = require '../misc'
 modules = require './modules'
 
+{eval: evaluate, evalall, cd} = client.import rpc: ['eval', 'evalall'], msg: ['cd']
+
 module.exports =
-  client: client.import
-    rpc: ['eval', 'evalall']
-    msg: ['cd']
 
-  cursor: ({row, column}) ->
-    row: row+1
-    column: column+1
-
-  evalData: (editor, selection) ->
-    start = selection.getHeadBufferPosition()
-    stop = selection.getTailBufferPosition()
-    if not start.isLessThan stop then [start, stop] = [stop, start]
-
-    code: editor.getText()
-    module: editor.juliaModule
-    path: editor.getPath() || 'untitled-' + editor.getBuffer().inkId
-    start: @cursor start
-    stop: @cursor stop
-
-  # TODO: get block bounds as a seperate step
-  # TODO: implement block finding in Atom
   eval: ->
     editor = atom.workspace.getActiveTextEditor()
-    for sel in editor.getSelections()
-      @client.eval(@evalData(editor, sel)).then ({start, end, result, plainresult}) =>
-        if result?
-          error = result.type == 'error'
-          view = if error then result.view else result
-          fade = not @ink.Result.removeLines editor, start-1, end-1
-          r = new @ink.Result editor, [start-1, end-1],
-            content: views.render view
-            error: error
-            fade: fade
-          r.view.classList.add 'julia'
-          if error and result.highlights?
-            @showError r, result.highlights
-          notifications.show "Evaluation Finished"
+    mod = modules.current()
+    edpath = editor.getPath() || 'untitled-' + editor.getBuffer().inkId
+    for {range, line, text} in blocks.get editor
+      [[start], [end]] = range
+      @ink.highlight editor, start, end
+      evaluate({text, line: line+1, mod, path: edpath}).then (result) =>
+        error = result.type == 'error'
+        view = if error then result.view else result
+        r = new @ink.Result editor, [start, end],
+          content: views.render view
+          error: error
+        r.view.classList.add 'julia'
+        if error and result.highlights?
+          @showError r, result.highlights
+        notifications.show "Evaluation Finished"
 
   # get documentation or methods for the current word
   toggleMeta: (type) ->
-    mod = modules.currentModule()
+    mod = modules.current()
     mod = if mod then mod else 'Main'
     editor = atom.workspace.getActiveTextEditor()
     [word, range] = @getWord editor
@@ -61,7 +44,6 @@ module.exports =
           content: views.render view
           error: error
           fade: fade
-        # type: 'block'
 
   # gets the word and its range in the `editor` which the last cursor is on
   getWord: (editor) ->
@@ -77,11 +59,11 @@ module.exports =
   evalAll: ->
     editor = atom.workspace.getActiveTextEditor()
     atom.commands.dispatch atom.views.getView(editor), 'inline-results:clear-all'
-    @client.evalall({
-                      path: editor.getPath()
-                      module: editor.juliaModule
-                      code: editor.getText()
-                    }).then (result) ->
+    evalall({
+              path: editor.getPath()
+              module: editor.juliaModule
+              code: editor.getText()
+            }).then (result) ->
         notifications.show "Evaluation Finished"
 
   showError: (r, lines) ->
@@ -100,18 +82,18 @@ module.exports =
   cdHere: ->
     file = atom.workspace.getActiveTextEditor()?.getPath()
     file? or atom.notifications.addError 'This file has no path.'
-    @client.cd path.dirname(file)
+    cd path.dirname(file)
 
   cdProject: ->
     dirs = atom.project.getPaths()
     if dirs.length < 1
       atom.notifications.addError 'This project has no folders.'
     else if dirs.length == 1
-      @client.cd dirs[0]
+      cd dirs[0]
     else
       selector.show(dirs).then (dir) =>
         return unless dir?
-        @client.cd dir
+        cd dir
 
   cdHome: ->
-    @client.cd paths.home()
+    cd paths.home()
