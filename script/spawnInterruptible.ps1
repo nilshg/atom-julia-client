@@ -1,15 +1,18 @@
 param(
-	[Int32] $port,
-	[string] $jlpath,
-	[string] $boot,
-	[string] $cwd
+  [Int32] $port,
+  [Int32] $wrapPort,
+  [string] $jlpath,
+  [string] $boot,
+  [string] $cwd
 )
 
 # change to working dir:
-cd $cwd
+if (Test-Path $cwd) {
+  cd $cwd
+}
 
 # start Julia
-$proc = Start-Process $jlpath @($boot, $port) -NoNewWindow -PassThru
+$proc = Start-Process $jlpath @("-i", $boot, $port) -NoNewWindow -PassThru
 
 # import GenerateConsoleCtrlEvent:
 $MethodDefinition = @'
@@ -46,27 +49,26 @@ function Receive-TCPMessage {
         $stream.close()
         $listener.stop()
     }
-	catch [exception]{
+  catch [exception]{
         echo "julia-client: Internal Error:"
         echo "$exception"
     }
 }
 
-# the port should probably be determined dynamically (by nodejs):
 while ($true){
-	$msg = Receive-TCPMessage -Port 26992 # wait for interrupts
-	if ($msg -match "SIGINT"){
-		$status = $Kernel32::GenerateConsoleCtrlEvent(0, $proc.Id)
-		# this is necessary for GenerateConsoleCtrlEvent to actually do something:
-		echo "Interrupting Julia..."
-		if (!$status) {
-			echo "julia-client: Internal Error: Interrupting Julia failed."
-		}
-	}
-	if ($msg -match "KILL"){
-		if (!($proc.HasExited)){
-			$proc.Kill()
-		}
-		Exit
-	}
+  $msg = Receive-TCPMessage -Port $wrapPort # wait for interrupts
+  if ($msg -match "SIGINT"){
+    $status = $Kernel32::GenerateConsoleCtrlEvent(0, $proc.Id)
+    # this is necessary for GenerateConsoleCtrlEvent to actually do something:
+    echo "Interrupting Julia..."
+    if (!$status) {
+      echo "julia-client: Internal Error: Interrupting Julia failed."
+    }
+  }
+  if ($msg -match "KILL"){
+    if (!($proc.HasExited)){
+      $proc.Kill()
+    }
+    Exit
+  }
 }

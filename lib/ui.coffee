@@ -1,28 +1,19 @@
-{client} = require './connection'
-
 module.exports =
-  console:       require './ui/console'
   notifications: require './ui/notifications'
   selector:      require './ui/selector'
   views:         require './ui/views'
 
-  activate: ->
+  activate: (@client) ->
     @notifications.activate()
-    client.onConnected =>
+    @client.onConnected =>
       @notifications.show("Client Connected")
+    @client.onDisconnected =>
+      @ink?.Result.invalidateAll()
 
   deactivate: ->
-    @console.deactivate()
     @spinner.dispose()
 
-  consumeInk: (ink) ->
-    @console.ink = ink
-    @console.activate()
+  consumeInk: (@ink) ->
+    @views.ink = @ink
 
-    @views.ink = ink
-
-    @spinner = new ink.Spinner client.loading
-
-    client.handle 'show-block', ({start, end}) ->
-      if ed = atom.workspace.getActiveTextEditor()
-        ink.highlight ed, start-1, end-1
+    @spinner = new @ink.Spinner @client.loading

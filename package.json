@@ -1,7 +1,7 @@
 {
   "name": "julia-client",
   "main": "./lib/julia-client",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Julia Evaluation",
   "keywords": [],
   "repository": "https://github.com/JunoLab/atom-julia-client",
@@ -10,12 +10,18 @@
     "atom": ">=1.0.0 <2.0.0"
   },
   "dependencies": {
-    "atom-space-pen-views": "^2.0.0"
+    "atom-space-pen-views": "^2.0.0",
+    "underscore-plus": "*"
   },
   "consumedServices": {
     "status-bar": {
       "versions": {
         "^1.0.0": "consumeStatusBar"
+      }
+    },
+    "tool-bar": {
+      "versions": {
+        "^0.1.0": "consumeToolBar"
       }
     },
     "ink": {

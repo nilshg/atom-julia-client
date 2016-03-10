@@ -1,23 +1,25 @@
 http = require 'http'
 commands = require './package/commands'
+menu = require './package/menu'
+toolbar = require './package/toolbar'
 
 module.exports = JuliaClient =
+  misc:       require './misc'
+  ui:         require './ui'
   connection: require './connection'
   runtime:    require './runtime'
-  ui:         require './ui'
-  misc:       require './misc'
-
-  config: require './package/config'
 
   activate: (state) ->
-    x.activate() for x in [commands, @connection, @runtime, @ui]
+    commands.activate @
+    x.activate() for x in [menu, @connection, @runtime]
+    @ui.activate @connection.client
 
     try
       if id = localStorage.getItem 'metrics.userId'
         http.get "http://data.junolab.org/hit?id=#{id}&app=atom-julia"
 
   deactivate: ->
-    x.deactivate() for x in [commands, @connection, @runtime, @ui]
+    x.deactivate() for x in [commands, menu, toolbar, @connection, @runtime, @ui]
 
   consumeInk: (ink) ->
     commands.ink = ink
@@ -26,4 +28,7 @@ module.exports = JuliaClient =
   consumeStatusBar: (bar) ->
     @runtime.consumeStatusBar bar
 
+  consumeToolBar: (bar) -> toolbar.consumeToolBar bar
+
+  config: require './package/config'
   completions: -> require './runtime/completions'

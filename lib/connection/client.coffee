@@ -58,17 +58,17 @@ module.exports =
   handle: (type, f) ->
     @handlers[type] = f
 
-  import: (fs, rpc = false, mod = {}) ->
+  import: (fs, rpc = true, mod = {}) ->
     return unless fs?
+    if fs.constructor == String then return @import [fs], rpc, mod
     if fs.rpc? or fs.msg?
       mod = {}
       @import fs.rpc, true,  mod
       @import fs.msg, false, mod
     else
-      for f in fs
-        do (f) =>
-          mod[f] = (args...) =>
-            if rpc then @rpc f, args... else @msg f, args...
+      fs.forEach (f) =>
+        mod[f] = (args...) =>
+          if rpc then @rpc f, args... else @msg f, args...
     mod
 
   # Connecting & Booting
@@ -77,6 +77,8 @@ module.exports =
 
   onConnected: (cb) -> @emitter.on('connected', cb)
   onDisconnected: (cb) -> @emitter.on('disconnected', cb)
+
+  isBooting: false
 
   isConnected: -> false
 
@@ -110,6 +112,10 @@ module.exports =
     cb.reject() for id, cb of @callbacks
     @callbacks = {}
 
+  isWorking: -> @loading.isWorking()
+  onWorking: (f) -> @loading.onWorking f
+  onDone: (f) -> @loading.onDone f
+
   # Management & UI
 
   connectedError: ->
@@ -130,8 +136,3 @@ module.exports =
 
   require: (f) -> @notConnectedError() or f()
   disrequire: (f) -> @connectedError() or f()
-
-  start: ->
-    if not @isActive()
-      atom.commands.dispatch atom.views.getView(atom.workspace),
-                             'julia-client:start-julia'
