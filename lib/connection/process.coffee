@@ -21,9 +21,13 @@ module.exports = jlprocess =
 
   bundledExe: ->
     res = path.dirname atom.config.resourcePath
-    exe = if process.platform is 'win32' then 'julia.exe' else 'julia'
-    p = path.join res, 'julia', 'bin', exe
+    p = path.join res, 'julia', 'bin', @executable()
     if fs.existsSync p then p
+
+  executable: ->
+    if process.platform is 'win32' then 'julia.exe' else 'julia'
+
+  isBundled: -> !!@bundledExe()
 
   packageDir: (s...) ->
     packageRoot = path.resolve __dirname, '..', '..'
@@ -34,28 +38,49 @@ module.exports = jlprocess =
 
   script: (s...) -> @packageDir 'script', s...
 
-  workingDir: ->
+  withWorkingDir: (fn) ->
     paths = atom.workspace.project.getDirectories()
-    if paths.length == 1 and fs.statSync(paths[0].path).isDirectory()
-      paths[0].path
-    else
-      process.env.HOME || process.env.USERPROFILE
+    # default to HOME as working dir for julia
+    wd = process.env.HOME || process.env.USERPROFILE
+    if paths.length > 0
+      # use the first open project folder (or its parent folder for files) if
+      # it is valid
+      fs.stat paths[0].path, (err, stats) =>
+        if not err?
+          if stats.isFile()
+            wd = path.dirname paths[0].path
+          else
+            wd = paths[0].path
+        fn wd
 
   jlpath: ->
     p = atom.config.get("julia-client.juliaPath")
     if p == '[bundle]' then p = @bundledExe()
     p
 
-  checkPath: (path) ->
-    new Promise (resolve) ->
-      fs.exists path, (exists) ->
-        if exists
-          resolve true
+  checkPath: (p) ->
+    new Promise (resolve, reject) =>
+      # check whether path exists
+      fs.stat p, (err, stats) =>
+        if not err
+          # and is a file
+          if stats.isFile() then resolve(); return
+          # if it isn't, look for a file called `julia(.exe)`
+          fs.readdir p, (err, files) =>
+            if err or files.indexOf(@executable()) < 0 then reject(); return
+            newpath = path.join p, @executable()
+            # check whether that file is no directory
+            fs.stat newpath, (err, fstats) =>
+              # change the `Julia Path` setting to that new path and carry on
+              if not fstats.isFile() then reject(); return
+              atom.config.set 'julia-client.juliaPath', newpath
+              resolve()
+        # fallback to calling `which` or `where` on the path
         else
           which = if process.platform is 'win32' then 'where' else 'which'
-          proc = child_process.spawn which, [path]
+          proc = child_process.spawn which, [p]
           proc.on 'exit', (status) ->
-            resolve status == 0
+            if status is 0 then resolve() else reject()
 
   jlNotFound: (path) ->
     atom.notifications.addError "Julia could not be found.",
@@ -71,53 +96,52 @@ module.exports = jlprocess =
     return if @proc?
     client.booting()
 
-    @checkPath(@jlpath()).then (exists) =>
-      if not exists
+    @checkPath(@jlpath())
+      .then =>
+        @spawnJulia port, =>
+          @proc.on 'exit', (code, signal) =>
+            @emitter.emit 'stderr', "Julia has stopped"
+            if not @useWrapper then @emitter.emit 'stderr', ": #{code}, #{signal}"
+            @proc = null
+            client.cancelBoot()
+          @proc.stdout.on 'data', (data) =>
+            text = data.toString()
+            if text then @emitter.emit 'stdout', text
+            if text and @pipeConsole then console.log text
+          @proc.stderr.on 'data', (data) =>
+            text = data.toString()
+            if text then @emitter.emit 'stderr', text
+            if text and @pipeConsole then console.info text
+      .catch =>
         @jlNotFound @jlpath()
         client.cancelBoot()
-        return
-
-      @spawnJulia port, =>
-        @proc.on 'exit', (code, signal) =>
-          @emitter.emit 'stderr', "Julia has stopped"
-          if not @useWrapper then @emitter.emit 'stderr', ": #{code}, #{signal}"
-          @proc = null
-          client.cancelBoot()
-        @proc.stdout.on 'data', (data) =>
-          text = data.toString()
-          if text then @emitter.emit 'stdout', text
-          if text and @pipeConsole then console.log text
-        @proc.stderr.on 'data', (data) =>
-          text = data.toString()
-          if text then @emitter.emit 'stderr', text
-          if text and @pipeConsole then console.info text
 
   spawnJulia: (port, fn) ->
-    if process.platform is 'win32' and atom.config.get("julia-client.enablePowershellWrapper")
-      @useWrapper = parseInt(child_process.spawnSync("powershell",
-                                                    ["-NoProfile", "$PSVersionTable.PSVersion.Major"])
-                                          .output[1].toString()) > 2
-      if @useWrapper
-        # get a random and hopefully free port:
-        @getFreePort =>
-          @proc = child_process.spawn("powershell",
-                                      ["-NoProfile", "-ExecutionPolicy", "bypass",
-                                       "& \"#{@script "spawnInterruptible.ps1"}\"
-                                       -cwd \"#{@workingDir()}\"
-                                       -port #{port}
-                                       -wrapPort #{@wrapPort}
-                                       -jlpath \"#{@jlpath()}\"
-                                       -boot \"#{@script 'boot.jl'}\""])
-          fn()
-        return
-      else
-        @emitter.emit 'stdout', "PowerShell version < 3 encountered. Running without wrapper (interrupts won't work)."
-    @proc = child_process.spawn(@jlpath(), ["-i", @script("boot.jl"), port], cwd: @workingDir())
-    fn()
+    @withWorkingDir (workingdir) =>
+      if process.platform is 'win32' and atom.config.get("julia-client.enablePowershellWrapper")
+        @useWrapper = parseInt(child_process.spawnSync("powershell",
+                                                      ["-NoProfile", "$PSVersionTable.PSVersion.Major"])
+                                            .output[1].toString()) > 2
+        if @useWrapper
+          @getFreePort =>
+            @proc = child_process.spawn("powershell",
+                                        ["-NoProfile", "-ExecutionPolicy", "bypass",
+                                         "& \"#{@script "spawnInterruptible.ps1"}\"
+                                         -cwd \"#{workingdir}\"
+                                         -port #{port}
+                                         -wrapPort #{@wrapPort}
+                                         -jlpath \"#{@jlpath()}\"
+                                         -boot \"#{@script 'boot.jl'}\""])
+            fn()
+          return
+        else
+          @emitter.emit 'stdout', "PowerShell version < 3 encountered. Running without wrapper (interrupts won't work)."
+      @proc = child_process.spawn(@jlpath(), ["-i", @script("boot.jl"), port], cwd: workingdir)
+      fn()
 
   getFreePort: (fn) ->
     server = net.createServer()
-    server.listen 0, 'localhost', =>
+    server.listen 0, '127.0.0.1', =>
       @wrapPort = server.address().port
       server.close()
       fn()

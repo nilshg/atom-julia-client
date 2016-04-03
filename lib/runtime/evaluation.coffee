@@ -9,10 +9,11 @@ modules = require './modules'
 
 module.exports =
 
+  # TODO: make the mark first and attach the result later
   eval: ({move}={}) ->
     editor = atom.workspace.getActiveTextEditor()
     mod = modules.current() # TODO: may not work in all cases
-    edpath = editor.getPath() || 'untitled-' + editor.getBuffer().inkId
+    edpath = editor.getPath() || 'untitled-' + editor.getBuffer().id
     blocks.get(editor, move: true).forEach ({range, line, text, selection}) =>
       blocks.moveNext editor, selection, range if move
       [[start], [end]] = range
