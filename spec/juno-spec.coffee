@@ -2,7 +2,6 @@ juno = require '../lib/julia-client'
 
 # Testing-specific settings
 juno.connection.process.jlpath = -> "julia"
-juno.connection.process.workingDir = -> process.env.HOME || process.env.USERPROFILE
 juno.connection.process.pipeConsole = true
 
 describe "the package", ->
@@ -24,19 +23,17 @@ describe "managing the client", ->
     it "can validate the existence of a julia binary", ->
       path = require 'path'
       checkPath = (p) -> juno.connection.process.checkPath p
-      waitsForPromise ->
-        checkPath(path.join(__dirname, "juno-spec.coffee")).then (exists) ->
-          expect(exists).toBe(true)
-      waitsForPromise ->
-        checkPath(path.join(__dirname, "doesn't-exist.coffee")).then (exists) ->
-          expect(exists).toBe(false)
+      waitsFor (done) ->
+        checkPath(path.join(__dirname, "juno-spec.coffee")).then -> done()
+      waitsFor (done) ->
+        checkPath(path.join(__dirname, "doesn't-exist.coffee")).catch -> done()
 
     it "can validate the existence of a julia command", ->
       checkPath = (p) -> juno.connection.process.checkPath p
-      waitsForPromise ->
-        checkPath("julia").then (exists) -> expect(exists).toBe(true)
-      waitsForPromise ->
-        checkPath("nojulia").then (exists) -> expect(exists).toBe(false)
+      waitsFor (done) ->
+        checkPath("julia").then -> done()
+      waitsFor (done) ->
+        checkPath("nojulia").catch -> done()
 
   describe "when booting the client", ->
     bootPromise = null
