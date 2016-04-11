@@ -9,19 +9,13 @@ module.exports =
   queue: []
   id: 0
 
-  unPromise: (x, f) ->
-    if x?.constructor is Promise
-      x.then f
-    else
-      f x
-
   input: ([type, args...]) ->
     if type.constructor == Object
       {type, callback} = type
     if @handlers.hasOwnProperty type
       result = @handlers[type] args...
       if callback
-        @unPromise result, (result) =>
+        Promise.resolve(result).then (result) =>
           @msg 'cb', callback, result
     else
       console.log "julia-client: unrecognised message #{type}"
@@ -36,7 +30,7 @@ module.exports =
         @loading.done()
 
     @handle 'cancelCallback', (id) =>
-      @callbacks[id].reject()
+      @callbacks[id].reject "cancelled by julia"
       @loading.done()
 
   # Will be replaced by the connection logic
@@ -109,7 +103,7 @@ module.exports =
     @cancelBoot()
     @loading.reset()
     @queue = []
-    cb.reject() for id, cb of @callbacks
+    cb.reject 'client disconnected' for id, cb of @callbacks
     @callbacks = {}
 
   isWorking: -> @loading.isWorking()
@@ -120,7 +114,7 @@ module.exports =
 
   connectedError: ->
     if @isActive()
-      atom.notifications.addError "Can't create a new client.",
+      atom.notifications.addError "Can't start a Julia process.",
         detail: "There is already a Julia client running."
       true
     else
