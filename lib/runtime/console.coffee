@@ -2,7 +2,7 @@
 
 {history} = require '../misc'
 {notifications, views} = require '../ui'
-{client, process} = require '../connection'
+{client} = require '../connection'
 
 modules = require './modules'
 
@@ -29,8 +29,10 @@ module.exports =
       @c.result view,
         error: result.type == 'error'
 
-    process.onStdout (s) => @c.stdout s
-    process.onStderr (s) => @c.stderr s
+    client.handle 'input', => @input()
+
+    client.onStdout (s) => @stdout s
+    client.onStderr (s) => @stderr s
 
   deactivate: ->
     @subs.dispose()
@@ -38,6 +40,8 @@ module.exports =
 
   create: ->
     @c = @ink.Console.fromId 'julia'
+    view = atom.views.getView @c
+    view.classList.add 'julia'
     @c.setModes @modes
     @c.onEval (ed) => @eval ed
     client.onWorking => @c.loading true
@@ -45,6 +49,17 @@ module.exports =
     atom.views.getView(@c).classList.add 'julia'
     history.read().then (entries) =>
       @c.history.set entries
+
+  ignored: ['WARNING: Method definition require(Symbol)']
+  ignore: (s) ->
+    for i in @ignored
+      return true if s.startsWith(i)
+
+  stdout: (data) -> @c.stdout data
+
+  stderr: (data) ->
+    data = data.split('\n').filter((x)=>!@ignore x).join("\n")
+    if data then @c.stderr data
 
   open: ->
     # Seems like atom should be doing this check for us,
@@ -72,3 +87,9 @@ module.exports =
     {name: 'help', prefix: '?', icon: 'question', grammar: 'source.julia'}
     {name: 'shell', prefix: ';', icon: 'terminal', grammar: 'source.shell'}
   ]
+
+  input: ->
+    new Promise (resolve) =>
+      @c.output type: 'input', icon: 'file-text', eval: ->
+        resolve @editor.getText()
+      @c.emitter.emit 'focus-input'

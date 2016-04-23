@@ -11,7 +11,7 @@ module.exports =
       callback: ->
         atom.workspace.open().then (ed) ->
           ed.setGrammar(atom.grammars.grammarForScopeName('source.julia'))
-      tooltip: 'New Julia Script'
+      tooltip: 'New Julia File'
       iconset: 'ion'
 
     @bar.addButton
@@ -46,13 +46,13 @@ module.exports =
 
     @bar.addButton
       icon: 'zap'
-      callback: 'julia-client:evaluate-and-move'
-      tooltip: 'Evaluate Line'
+      callback: 'julia-client:run-and-move'
+      tooltip: 'Run Block'
 
     @bar.addButton
       icon: 'play'
-      callback: 'julia-client:evaluate-all'
-      tooltip: 'Run Script'
+      callback: 'julia-client:run-file'
+      tooltip: 'Run File'
       iconset: 'ion'
 
     @bar.addButton
@@ -60,6 +60,25 @@ module.exports =
       callback: 'julia-client:kill-julia'
       tooltip: 'Stop Julia'
       iconset: 'ion'
+
+    @bar.addSpacer()
+
+    # Debugging
+
+    @bar.addButton
+      icon: 'arrow-down'
+      callback: 'julia-debug:step-to-next-line'
+      tooltip: 'Debug: Step to Next Line'
+
+    @bar.addButton
+      icon: 'link-external'
+      callback: 'julia-debug:finish-function'
+      tooltip: 'Debug: Finish Function'
+
+    @bar.addButton
+      icon: 'chevron-right'
+      callback: 'julia-debug:step-into-function'
+      tooltip: 'Debug: Step Into Function'
 
   deactivate: ->
     @bar?.removeItems()

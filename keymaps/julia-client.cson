@@ -5,17 +5,25 @@
 # `C-J`.
 
 '.platform-darwin .item-views > atom-text-editor[data-grammar="source julia"]':
-  'cmd-enter': 'julia-client:evaluate'
-  'shift-enter': 'julia-client:evaluate-and-move'
-  'cmd-shift-enter': 'julia-client:evaluate-all'
-  'cmd-j cmd-m': 'julia-client:set-working-module'
-  'ctrl-c': 'julia-client:interrupt-julia'
+  'cmd-enter': 'julia-client:run-block'
+  'shift-enter': 'julia-client:run-and-move'
+  'cmd-shift-enter': 'julia-client:run-file'
   'cmd-j cmd-d': 'julia-client:toggle-documentation'
   'cmd-shift-a': 'julia:select-block'
 
-'.platform-darwin ink-console.julia':
+'.platform-darwin .item-views > atom-text-editor[data-grammar="source julia"],
+ .platform-darwin ink-console.julia,
+ .platform-darwin ink-console.julia atom-text-editor':
   'ctrl-c': 'julia-client:interrupt-julia'
   'cmd-j cmd-m': 'julia-client:set-working-module'
+
+'.platform-darwin .item-views > atom-text-editor[data-grammar="source julia"].debug,
+ .platform-darwin ink-console.julia.debug,
+ .platform-darwin ink-console.julia.debug atom-text-editor':
+  'ctrl-l': 'julia-debug:step-to-next-line'
+  'ctrl-m': 'julia-debug:step-to-next-expression'
+  'ctrl-f': 'julia-debug:finish-function'
+  'ctrl-s': 'julia-debug:step-into-function'
 
 '.platform-darwin atom-workspace':
   'cmd-j cmd-r': 'julia-client:open-a-repl'
@@ -28,9 +36,9 @@
 
 '.platform-win32 .item-views > atom-text-editor[data-grammar="source julia"],
  .platform-linux .item-views > atom-text-editor[data-grammar="source julia"]':
-  'ctrl-enter': 'julia-client:evaluate'
-  'shift-enter': 'julia-client:evaluate-and-move'
-  'ctrl-shift-enter': 'julia-client:evaluate-all'
+  'ctrl-enter': 'julia-client:run-block'
+  'shift-enter': 'julia-client:run-and-move'
+  'ctrl-shift-enter': 'julia-client:run-file'
   'ctrl-j ctrl-m': 'julia-client:set-working-module'
   'ctrl-shift-c': 'julia-client:interrupt-julia'
   'ctrl-j ctrl-d': 'julia-client:toggle-documentation'
