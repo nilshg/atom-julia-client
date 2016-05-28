@@ -1,7 +1,11 @@
+Highlights = require 'highlights'
+highlighter = null
+
 module.exports = views =
   dom: ({tag, attrs, contents}) ->
     view = document.createElement tag
     for k, v of attrs
+      if v instanceof Array then v = v.join ' '
       view.setAttribute k, v
     if contents?
       if contents.constructor isnt Array
@@ -45,6 +49,22 @@ module.exports = views =
         initialLine: if line >= 0 then line
     view
 
+  number: ({value, full}) ->
+    view = @render @tags.span 'constant number', value.toPrecision(3)
+    isfull = false
+    view.onclick = ->
+      view.innerText = if !isfull then full else value.toPrecision(3)
+      isfull = !isfull
+    view
+
+  code: ({text, scope}) ->
+    scope ?= 'source.julia'
+    highlighter ?= new Highlights registry: atom.grammars
+    highlightedHtml = highlighter.highlightSync
+      fileContents: text
+      scopeName: scope
+    @render {type: 'html', content: highlightedHtml}
+
   views:
     dom:     (a...) -> views.dom  a...
     html:    (a...) -> views.html a...
@@ -52,6 +72,8 @@ module.exports = views =
     subtree: (a...) -> views.subtree a...
     link:    (a...) -> views.link a...
     copy:    (a...) -> views.copy a...
+    number:  (a...) -> views.number a...
+    code:    (a...) -> views.code a...
 
   render: (data) ->
     if @views.hasOwnProperty(data.type)

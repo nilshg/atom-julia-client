@@ -12,6 +12,9 @@ module.exports =
   activate: ->
     @create()
 
+    atom.config.observe 'julia-client.maximumConsoleSize', (size) =>
+      @c.maxSize = size
+
     @subs = new CompositeDisposable
 
     @subs.add atom.workspace.addOpener (uri) =>
@@ -50,10 +53,10 @@ module.exports =
     history.read().then (entries) =>
       @c.history.set entries
 
-  ignored: ['WARNING: Method definition require(Symbol)']
+  ignored: [/^WARNING: Method definition .* overwritten/]
   ignore: (s) ->
     for i in @ignored
-      return true if s.startsWith(i)
+      return true if s.match(i)
 
   stdout: (data) -> @c.stdout data
 

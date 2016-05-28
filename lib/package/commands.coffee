@@ -3,6 +3,10 @@ shell =                 require 'shell'
 
 module.exports =
   activate: (juno) ->
+
+    if atom.config.get("julia-client.launchOnStartup")
+      @withInk -> juno.connection.boot()
+
     requireClient    = (a, f) -> juno.connection.client.require a, f
     disrequireClient = (a, f) -> juno.connection.client.disrequire a, f
     boot = -> juno.connection.boot()
@@ -66,7 +70,6 @@ module.exports =
       "julia-client:clear-console": => juno.runtime.console.reset()
       'julia-client:open-plot-pane': => @withInk -> juno.runtime.plots.open()
       'julia-client:open-workspace': => @withInk -> juno.runtime.workspace.open()
-      'julia-client:reset-loading-indicator': -> juno.connection.client.reset()
       'julia-client:settings': ->
         atom.workspace.open('atom://config/packages/julia-client')
       'julia-debug:step-to-next-line': => juno.runtime.debugger.nextline()

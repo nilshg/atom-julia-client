@@ -1,4 +1,12 @@
+{throttle} = require 'underscore-plus'
 {Emitter} = require 'atom'
+
+metrics = ->
+  if id = localStorage.getItem 'metrics.userId'
+    r = require('http').get "http://data.junolab.org/hit?id=#{id}&app=atom-julia-boot"
+    r.on 'error', ->
+
+metrics = throttle metrics, 60*60*1000
 
 module.exports =
 
@@ -18,6 +26,7 @@ module.exports =
   id: 0
 
   input: ([type, args...]) ->
+    metrics()
     if type.constructor == Object
       {type, callback} = type
     if @handlers.hasOwnProperty type
@@ -41,6 +50,11 @@ module.exports =
       @callbacks[id].reject "cancelled by julia"
       @loading.done()
 
+    atom.config.observe 'julia-client.errorNotifications', (notif) =>
+      @handle 'error', (options) =>
+        if notif
+            atom.notifications.addError options.msg, options
+
   msg: (type, args...) ->
     if @isConnected()
       @conn.message [type, args...]
@@ -49,7 +63,7 @@ module.exports =
 
   rpc: (type, args...) ->
     new Promise (resolve, reject) =>
-      @id = @id+1
+      @id += 1
       @callbacks[@id] = {resolve, reject}
       @msg {type: type, callback: @id}, args...
       @loading.working()
@@ -140,6 +154,14 @@ module.exports =
       @rpc('exit').catch ->
     else
       @clientCall 'kill', 'kill'
+
+  clargs: ->
+    {precompiled, optimisationLevel} = atom.config.get 'julia-client.juliaOptions'
+    as = []
+    as.push "--depwarn=no"
+    as.push "--precompiled=#{if precompiled then 'yes' else 'no'}"
+    as.push "-O#{optimisationLevel}" unless optimisationLevel is 2
+    as
 
   connectedError: (action = 'do that') ->
     if @isConnected()

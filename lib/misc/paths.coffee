@@ -1,7 +1,6 @@
-# TODO: working directory dialog
-
 path =  require 'path'
 fs =    require 'fs'
+child_process = require 'child_process'
 
 module.exports =
 
@@ -16,8 +15,12 @@ module.exports =
     new Promise (resolve, reject) =>
       fs.readdir @juliaHome(), (err, data) =>
         if err? then return reject err
-        dir = data?.filter((path)=>path.startsWith('v')).sort().pop()
-        if dir? then resolve @juliaHome dir else reject()
+        @getVersion()
+          .then (ver) =>
+            r = new RegExp("v#{ver.major}\\.#{ver.minor}")
+            dir = data?.filter((path) => path.search(r) > -1)[0]
+            if dir? then resolve @juliaHome dir else reject()
+          .catch => reject()
 
   packages: ->
     @pkgDir().then (dir) =>
@@ -36,3 +39,18 @@ module.exports =
           atom.open pathsToOpen: [path.join dir, pkg]
       .catch =>
         atom.notifications.addError "Couldn't find your Julia packages."
+
+  jlpath: ->
+    p = atom.config.get("julia-client.juliaPath")
+    if p == '[bundle]' then p = @bundledExe()
+    p
+
+  getVersion: (path = @jlpath()) ->
+    return Promise.resolve @version if @version?
+    new Promise (resolve, reject) =>
+      proc = child_process.exec "#{@jlpath()} --version", (err, stdout, stderr) =>
+        return reject() if err?
+        res = stdout.match /(\d+)\.(\d+)\.(\d+)/
+        return reject() unless res?
+        [_, major, minor, patch] = res
+        resolve @version = {major, minor, patch}
