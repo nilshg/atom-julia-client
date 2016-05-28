@@ -32,13 +32,14 @@ module.exports =
           {label: 'Current File\'s Folder', command: 'julia-client:work-in-file-folder'}
           {label: 'Current Project\'s Folder', command: 'julia-client:work-in-project-folder'}
           {label: 'Home Folder', command: 'julia-client:work-in-home-folder'}
+          {label: 'Select...', command: 'julia-client:select-working-folder'}
         ]
       }
 
       {type: 'separator'}
 
-      {label: 'Evaluate', command: 'julia-client:evaluate'}
-      {label: 'Evaluate All', command: 'julia-client:evaluate-all'}
+      {label: 'Run Block', command: 'julia-client:run-block'}
+      {label: 'Run File', command: 'julia-client:run-file'}
       {label: 'Open Console', command: 'julia-client:open-console'}
       {label: 'Clear Console', command: 'julia-client:clear-console'}
 

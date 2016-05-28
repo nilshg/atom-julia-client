@@ -1,3 +1,5 @@
+{time} = require './misc'
+
 module.exports =
   client:   require './connection/client'
   process:  require './connection/process'
@@ -21,12 +23,16 @@ module.exports =
         'julia-client:start-julia'
 
   deactivate: ->
-    @process.deactivate()
 
   consumeInk: (ink) ->
     @client.loading = new ink.Loading
 
+  metrics: ->
+    try
+      if id = localStorage.getItem 'metrics.userId'
+        require('http').get "http://data.junolab.org/hit?id=#{id}&app=atom-julia-boot"
+
   boot: ->
     if not @client.isActive()
       @tcp.listen (port) => @process.start port
-    @client.rpc 'ping'
+      time "Julia Boot", @client.rpc('ping').then => @metrics()

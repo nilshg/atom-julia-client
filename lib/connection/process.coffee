@@ -1,23 +1,26 @@
-{Emitter} =     require 'atom'
 child_process = require 'child_process'
 net =           require 'net'
 path =          require 'path'
 fs =            require 'fs'
 
 client = require './client'
+tcp = require './tcp'
 
-{exit} = client.import 'exit'
-
-module.exports = jlprocess =
+module.exports =
 
   activate: ->
-    @cmds = atom.commands.add 'atom-workspace',
-      'julia-client:kill-julia': => @killJulia()
-      'julia-client:interrupt-julia': => @interruptJulia()
-    @emitter = new Emitter
+    client.onDisconnected ->
+      if @useWrapper and @proc
+        @proc.kill()
 
-  deactivate: ->
-    @cmds.dispose()
+    client.handle 'welcome', =>
+      @note?.dismiss()
+      atom.notifications.addSuccess "Welcome to Juno!",
+        detail: """
+        Success! Juno is set up and ready to roll.
+        Try entering `2+2` in the console below.
+        """
+        dismissable: true
 
   bundledExe: ->
     res = path.dirname atom.config.resourcePath
@@ -94,26 +97,75 @@ module.exports = jlprocess =
       """
       dismissable: true
 
-  start: (port) ->
-    return if @proc?
-    client.booting()
+  openConsole: ->
+    atom.commands.dispatch atom.views.getView(atom.workspace),
+      'julia-client:open-console'
 
-    @checkPath(@jlpath())
+  bootErr: (err) ->
+    @note?.dismiss()
+    switch err
+      when 'juno-err-install'
+        atom.notifications.addError "Error installing Atom.jl package",
+          detail: """
+          Go to the Packages → Julia → Open Terminal menu and
+          run `Pkg.add("Atom")` in Julia, then try again.
+          If you still see an issue, please report it to:
+              julia-users@googlegroups.com
+          """
+          dismissable: true
+      when 'juno-err-load'
+        atom.notifications.addError "Error loading Atom.jl package",
+          detail: """
+          Go to the Packages → Julia → Open Terminal menu and
+          run `Pkg.update()`in Julia, then try again.
+          If you still see an issue, please report it to:
+              http://discuss.junolab.org/
+          """
+          dismissable: true
+      when 'juno-err-installing'
+        @note = atom.notifications.addInfo "Installing Julia packages...",
+          detail: """
+          Julia's first run will take a couple of minutes.
+          See the console below for progress.
+          """
+          dismissable: true
+        @openConsole()
+      when 'juno-err-precompiling'
+        @note = atom.notifications.addInfo "Compiling Julia packages...",
+          detail: """
+          Julia's first run will take a couple of minutes.
+          See the console below for progress.
+          """
+          dismissable: true
+        @openConsole()
+      else client.stderr err
+
+  init: (conn) ->
+    conn.interrupt = => @interrupt conn.proc
+    conn.kill = => @kill conn.proc
+    conn.stdin = (data) -> conn.proc.stdin.write data
+    client.connected conn
+
+  start: (port) ->
+    client.booting()
+    @checkPath @jlpath()
       .then =>
-        @spawnJulia port, =>
-          @proc.on 'exit', (code, signal) =>
-            @emitter.emit 'stderr', "Julia has stopped"
-            if not @useWrapper then @emitter.emit 'stderr', ": #{code}, #{signal}"
-            @proc = null
+        @spawnJulia port, (proc) =>
+          proc.on 'exit', (code, signal) =>
+            client.stderr "Julia has stopped"
+            if not @useWrapper then client.stderr ": #{code}, #{signal}"
             client.cancelBoot()
-          @proc.stdout.on 'data', (data) =>
+          proc.stdout.on 'data', (data) => client.stdout data.toString()
+          proc.stderr.on 'data', (data) =>
             text = data.toString()
-            if text then @emitter.emit 'stdout', text
-            if text and @pipeConsole then console.log text
-          @proc.stderr.on 'data', (data) =>
-            text = data.toString()
-            if text then @emitter.emit 'stderr', text
-            if text and @pipeConsole then console.info text
+            if text.startsWith 'juno-err'
+              @bootErr text
+              return
+            client.stderr text
+
+          tcp.next().then (conn) =>
+            conn.proc = proc
+            @init conn
       .catch =>
         @jlNotFound @jlpath()
         client.cancelBoot()
@@ -126,7 +178,7 @@ module.exports = jlprocess =
                                             .output[1].toString()) > 2
         if @useWrapper
           @getFreePort =>
-            @proc = child_process.spawn("powershell",
+            proc = child_process.spawn("powershell",
                                         ["-NoProfile", "-ExecutionPolicy", "bypass",
                                          "& \"#{@script "spawnInterruptible.ps1"}\"
                                          -cwd \"#{workingdir}\"
@@ -134,12 +186,12 @@ module.exports = jlprocess =
                                          -wrapPort #{@wrapPort}
                                          -jlpath \"#{@jlpath()}\"
                                          -boot \"#{@script 'boot.jl'}\""])
-            fn()
+            fn proc
           return
         else
-          @emitter.emit 'stdout', "PowerShell version < 3 encountered. Running without wrapper (interrupts won't work)."
-      @proc = child_process.spawn(@jlpath(), ["-i", @script("boot.jl"), port], cwd: workingdir)
-      fn()
+          client.stderr "PowerShell version < 3 encountered. Running without wrapper (interrupts won't work)."
+      proc = child_process.spawn(@jlpath(), ["-i", @script("boot.jl"), port], cwd: workingdir)
+      fn proc
 
   getFreePort: (fn) ->
     server = net.createServer()
@@ -148,40 +200,20 @@ module.exports = jlprocess =
       server.close()
       fn()
 
-  onStdout: (f) -> @emitter.on 'stdout', f
-  onStderr: (f) -> @emitter.on 'stderr', f
-
-  require: (f) ->
-    if not @proc
-      atom.notifications.addError "There's no Julia process running.",
-        detail: "Try starting one by evaluating something."
+  interrupt: (proc) ->
+    if @useWrapper
+      @sendSignalToWrapper('SIGINT')
     else
-      f()
+      proc.kill('SIGINT')
 
-  interruptJulia: ->
-    @require =>
-      if client.isConnected() and client.isWorking()
-        if @useWrapper
-          @sendSignalToWrapper('SIGINT')
-        else
-          @proc.kill('SIGINT')
-
-  killJulia: ->
-    if client.isConnected() and not client.isWorking()
-      exit()
+  kill: (proc) ->
+    if @useWrapper
+      @sendSignalToWrapper('KILL')
     else
-      @require =>
-        if @useWrapper
-          @sendSignalToWrapper('KILL')
-        else
-          @proc.kill()
+      proc.kill()
 
   sendSignalToWrapper: (signal) ->
     wrapper = net.connect(port: @wrapPort)
     wrapper.setNoDelay()
     wrapper.write(signal)
     wrapper.end()
-
-client.onDisconnected ->
-  if jlprocess.useWrapper and jlprocess.proc
-    jlprocess.proc.kill()
