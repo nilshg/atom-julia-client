@@ -1,5 +1,4 @@
-Highlights = require 'highlights'
-highlighter = null
+Highlighter = require './highlighter'
 
 module.exports = views =
   dom: ({tag, attrs, contents}) ->
@@ -17,7 +16,7 @@ module.exports = views =
   html: ({content}) ->
     view = @render @tags.div()
     view.innerHTML = content
-    view
+    view = if view.children.length == 1 then view.children[0] else view
 
   tree: ({head, children, expand}) ->
     @ink.tree.treeView(@render(head),
@@ -41,12 +40,34 @@ module.exports = views =
         e.stopPropagation()
     view
 
+  openEditorById: (id, line) ->
+    for pane in atom.workspace.getPanes()
+      ind = 0
+      for item in pane.getItems()
+        if item.constructor.name is "TextEditor" and item.getBuffer().id is id
+          pane.activateItemAtIndex ind
+          item.setCursorBufferPosition [line, 0]
+          item.scrollToCursorPosition()
+          return true
+        ind += 1
+    false
+
+  getUntitledId: (file) -> file.match(/untitled-([\d\w]+)$/)?[1]
+
   link: ({file, line, contents}) ->
     view = @render @tags.a {href: '#'}, contents
-    atom.tooltips.add view, title: -> file
-    view.onclick = ->
-      atom.workspace.open file,
-        initialLine: if line >= 0 then line
+    # TODO: the tooltips here need to be disposed of when the result is destroyed,
+    # but I don't think there are any listeners for that... 
+    if id = @getUntitledId file
+      atom.tooltips.add view, title: -> 'untitled'
+      view.onclick = =>
+        @openEditorById id, line
+    else
+      atom.tooltips.add view, title: -> file
+      view.onclick = ->
+        atom.workspace.open file,
+          initialLine: if line >= 0 then line
+          searchAllPanes: true
     view
 
   number: ({value, full}) ->
@@ -58,12 +79,8 @@ module.exports = views =
     view
 
   code: ({text, scope}) ->
-    scope ?= 'source.julia'
-    highlighter ?= new Highlights registry: atom.grammars
-    highlightedHtml = highlighter.highlightSync
-      fileContents: text
-      scopeName: scope
-    @render {type: 'html', content: highlightedHtml}
+    grammar = atom.grammars.grammarForScopeName("source.julia")
+    @render {type: 'html', content: Highlighter.highlight text, grammar}
 
   views:
     dom:     (a...) -> views.dom  a...
